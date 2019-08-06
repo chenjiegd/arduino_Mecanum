@@ -46,9 +46,7 @@ const typedef enum {
 	enSTOP
 } enCarState;
 
-const int key = 7; //按键key
-
-int Servo_LR = 90;
+const int key = 8; //按键key
 
 /*小车初始速度控制*/
 static int CarSpeedControl = 150;
@@ -59,7 +57,7 @@ String InputString = "";		 //用来储存接收到的内容
 boolean NewLineReceived = false; //前一次数据结束标志
 boolean StartBit = false;		 //协议开始标志
 /*电机状态*/
-static int g_CarState = enSTOP;		//1前2后3左4右5左旋6右旋7停止
+static int g_CarState = enSTOP; //1前2后3左4右5左旋6右旋7停止
 
 /**
 * Function       setup
@@ -80,7 +78,7 @@ void setup()
 	PCB_RGB_OFF();
 
 	pwm.begin();
-	pwm.setPWMFreq(60); // Analog servos run at ~60 Hz updates
+	pwm.setPWMFreq(50); // Analog servos run at ~60 Hz updates
 	Clear_All_PWM();
 	//舵机归位
 	Servo180(90);
@@ -271,7 +269,6 @@ void spin_right(int Speed)
 */
 void Servo180(int degree)
 {
-
 	long us = (degree * 1800 / 180 + 600); // 0.6 ~ 2.4
 	long pwmvalue = us * 4096 / 20000;	 // 50hz: 20,000 us
 	pwm.setPWM(7, 0, pwmvalue);
@@ -364,7 +361,8 @@ void serial_data_parse()
 			{
 				String m_skp = InputString.substring(i + 2, ii);
 				int m_kp = m_skp.toInt(); //将找到的字符串变成整型
-				Servo180(180 - m_kp);  //转动到指定角度m_kp
+				m_kp = map(m_kp, 0, 180, 60, 150);
+				Servo180(180 - m_kp); //转动到指定角度m_kp
 			}
 			InputString = ""; //清空串口数据
 			NewLineReceived = false;
@@ -551,5 +549,4 @@ void Clear_All_PWM()
 */
 void breathing_light()
 {
-
 }
