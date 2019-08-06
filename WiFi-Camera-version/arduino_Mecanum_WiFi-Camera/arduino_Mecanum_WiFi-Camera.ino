@@ -81,9 +81,11 @@ void setup()
 	pwm.setPWMFreq(50); // Analog servos run at ~60 Hz updates
 	Clear_All_PWM();
 	//舵机归位
-	Servo180(90);
+	Servo180(75);
 
 	pinMode(key, INPUT); //定义按键输入脚
+
+	breathing_light(20,1);
 }
 
 /**
@@ -547,6 +549,17 @@ void Clear_All_PWM()
 * @retval        void
 * @par History   无
 */
-void breathing_light()
+void breathing_light(int time, int increament)
 {
+	uint32_t color = strip.Color(0, 0, 0);
+	for (int a = 0; a < 256; a += increament)
+	{
+		color = strip.Color(a, 0, 0);
+		for (uint8_t i = 0; i < 4; i++)
+		{
+			strip.setPixelColor(i, color);
+		}
+		strip.show();
+		delay(time);
+	}
 }
