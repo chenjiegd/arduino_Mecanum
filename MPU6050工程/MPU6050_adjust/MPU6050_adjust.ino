@@ -205,3 +205,20 @@ float cal_omega(float a)
 {
 	return(a*180/M_PI);
 }
+
+
+float Kp = 37, Ki = 4, Kd = 60;
+float error = 0, P = 0, I = 0, D = 0, PID_value = 0;
+float previous_error = 0, previous_I = 0;
+void calculate_pid()
+{
+	P = error;
+	I = I + previous_I;
+	D = error - previous_error;
+
+	PID_value = (Kp * P) + (Ki * I) + (Kd * D);
+	// Serial.println(PID_value);
+
+	previous_I = I;
+	previous_error = error;
+}
