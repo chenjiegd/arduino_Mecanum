@@ -163,7 +163,7 @@ void loop()
 		mpu.dmpGetGravity(&gravity, &q);
 		mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 		Serial.print("ypr\t");
-		Serial.print(ypr[0] * 180 / M_PI);
+		Serial.print(cal_omega(ypr[0]));
 		Serial.print("\t");
 		// Serial.print(ypr[1] * 180 / M_PI);
 		// Serial.print("\t");
@@ -173,6 +173,8 @@ void loop()
 		Serial.print(aa.x);
 		Serial.print("\t");
 		Serial.print(aa.y);
+		Serial.print("\t");
+		Serial.print(cal_angle(-aa.x, aa.y));
 		// Serial.print("\t");
 		// Serial.print(aa.z);
 		// mpu.dmpGetGyro(&gy, fifoBuffer);
@@ -190,4 +192,16 @@ void loop()
 		blinkState = !blinkState;
 		digitalWrite(LED_PIN, blinkState);
 	}
+}
+
+//计算移动方向角
+float cal_angle(float y, float x)
+{
+	return atan2(int(y / 200) * 200, int(x / 200) * 200);
+}
+
+//计算偏航角
+float cal_omega(float a)
+{
+	return(a*180/M_PI);
 }
