@@ -1,27 +1,3 @@
-/* ============================================
-I2Cdev device library code is placed under the MIT license
-Copyright (c) 2012 Jeff Rowberg
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-===============================================
-*/
-
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
@@ -47,17 +23,6 @@ MPU6050 mpu;
    depends on the MPU-6050's INT pin being connected to the Arduino's
    external interrupt #0 pin. On the Arduino Uno and Mega 2560, this is
    digital I/O pin 2.
- * ========================================================================= */
-
-/* =========================================================================
-   NOTE: Arduino v1.0.1 with the Leonardo board generates a compile error
-   when using Serial.write(buf, len). The Teapot output uses this method.
-   The solution requires a modification to the Arduino USBAPI.h file, which
-   is fortunately simple, but annoying. This will be fixed in the next IDE
-   release. For more info, see these links:
-
-   http://arduino.cc/forum/index.php/topic,109987.0.html
-   http://code.google.com/p/arduino/issues/detail?id=958
  * ========================================================================= */
 
 // uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
@@ -91,10 +56,6 @@ MPU6050 mpu;
 // is present in this case). Could be quite handy in some cases.
 //#define OUTPUT_READABLE_WORLDACCEL
 
-// uncomment "OUTPUT_TEAPOT" if you want output that matches the
-// format used for the InvenSense teapot demo
-//#define OUTPUT_TEAPOT
-
 #define INTERRUPT_PIN 2 // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13		// (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
@@ -117,7 +78,6 @@ VectorFloat gravity; // [x, y, z]            gravity vector
 float euler[3];		 // [psi, theta, phi]    Euler angle container
 float ypr[3];		 // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
-
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -138,13 +98,6 @@ void setup()
 #endif
 	Serial.begin(115200);
 	while (!Serial);
-
-	// NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
-	// Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
-	// the baud timing being too misaligned with processor ticks. You must use
-	// 38400 or slower in these cases, or use some kind of external separate
-	// crystal solution for the UART timer.
-
 	// initialize device
 	mpu.initialize();
 	pinMode(INTERRUPT_PIN, INPUT);
