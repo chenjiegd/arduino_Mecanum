@@ -118,7 +118,7 @@ void setup()
 	pwm.begin();
 	pwm.setPWMFreq(50); // Analog servos run at ~60 Hz updates
 	Clear_All_PWM();
-	
+
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 	Wire.begin();
 	Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
@@ -799,7 +799,7 @@ struct car_omega
 {
 	/* data */
 	float Kp = 0, Ki = 0, Kd = 0;
-	float error = 0, P = 0, I = 0, D = 0, PID_value = 0;
+	float error = 0, I = 0, D = 0, PID_value = 0;
 	float previous_error = 0, previous_I = 0;
 };
 
@@ -807,17 +807,17 @@ struct car_alpha
 {
 	/* data */
 	float Kp = 0, Ki = 0, Kd = 0;
-	float error = 0, P = 0, I = 0, D = 0, PID_value = 0;
+	float error = 0, I = 0, D = 0, PID_value = 0;
 	float previous_error = 0, previous_I = 0;
 };
 
-void calculate_pid(float Kp, float Ki, float Kd, float error, float P, float I, float D, float PID_value, float previous_error, float previous_I)
+float calculate_pid(float Kp, float Ki, float Kd, float error, float I, float D, float previous_error, float previous_I)
 {
-	P = error;
 	I = I + previous_I;
 	D = error - previous_error;
 
-	PID_value = (Kp * P) + (Ki * I) + (Kd * D);
+	float PID_value = (Kp * error) + (Ki * I) + (Kd * D);
+	return PID_value;
 	// Serial.println(PID_value);
 
 	previous_I = I;
