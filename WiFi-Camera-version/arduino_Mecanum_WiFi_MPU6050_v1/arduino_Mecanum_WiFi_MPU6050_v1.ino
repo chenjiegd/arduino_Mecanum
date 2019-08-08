@@ -14,6 +14,7 @@
 #include <Adafruit_NeoPixel.h> //库文件
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps_V6_12.h"
+#include <math.h>
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 #include "Wire.h"
@@ -104,6 +105,20 @@ static int g_CarState = enSTOP; //1前2后3左4右5左旋6右旋7停止
 */
 void setup()
 {
+	// configure LED for output
+	pinMode(LED_PIN, OUTPUT);
+
+	//串口波特率设置
+	// Serial.begin(9600);
+
+	strip.begin();
+	strip.show();
+	PCB_RGB_OFF();
+
+	pwm.begin();
+	pwm.setPWMFreq(50); // Analog servos run at ~60 Hz updates
+	Clear_All_PWM();
+	
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 	Wire.begin();
 	Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
@@ -144,19 +159,7 @@ void setup()
 		packetSize = mpu.dmpGetFIFOPacketSize();
 	}
 
-	// configure LED for output
-	pinMode(LED_PIN, OUTPUT);
-
-	//串口波特率设置
-	// Serial.begin(9600);
-
-	strip.begin();
-	strip.show();
-	PCB_RGB_OFF();
-
-	pwm.begin();
-	pwm.setPWMFreq(50); // Analog servos run at ~60 Hz updates
-	Clear_All_PWM();
+	
 	//舵机归位
 	Servo180(75);
 
@@ -546,22 +549,22 @@ void loop()
 		brake();
 		break;
 	case enRUN:
-		mecanum_run(90 * 180 / M_PI, CarSpeedControl, 0);
+		mecanum_run(M_PI/2, CarSpeedControl, 0, 0);
 		break;
 	case enLEFT:
-		mecanum_run(0 * 180 / M_PI, CarSpeedControl, 0);
+		mecanum_run(M_PI, CarSpeedControl, 0, 0);
 		break;
 	case enRIGHT:
-		mecanum_run(a * 180 / M_PI, CarSpeedControl, 0);
+		mecanum_run(0, CarSpeedControl, 0, 0);
 		break;
 	case enBACK:
-		mecanum_run(a * 180 / M_PI, CarSpeedControl, 0);
+		mecanum_run(M_PI/2*3, CarSpeedControl, 0, 0);
 		break;
 	case enSPINLEFT:
-		mecanum_run(a * 180 / M_PI, 0, M_PI/2);
+		mecanum_run(0, 0, M_PI/2, CarSpeedControl);
 		break;
 	case enSPINRIGHT:
-		mecanum_run(a * 180 / M_PI, 0, -M_PI/2);
+		mecanum_run(0, 0, -M_PI/2, CarSpeedControl);
 		break;
 	default:
 		brake();
@@ -766,19 +769,20 @@ float cal_omega(float a)
 // 		pwm.setPWM(wheel[a - 1][1], 0, -speed);
 // 	}
 // }
-void mecanum_run(float car_alpha, int speed, int car_omega)
+void mecanum_run(float car_alpha, int speed_L, int car_omega, int speed_A)
 {
-	speed = speed * 16; //map 255 to 4096
-	float speed_x = speed * cos(car_alpha);
-	float speed_y = speed * sin(car_alpha);
-	float speed_omega = speed * sin(car_omega);
+	speed_L = speed_L * 16; //map 255 to 4096
+	speed_A = speed_A * 16; //map 255 to 4096
+	float speed_x = speed_L * cos(car_alpha);
+	float speed_y = speed_L * sin(car_alpha);
+	float speed_omega = speed_A * sin(car_omega);
 	float wheel_speed[4];
 	wheel_speed[0] = speed_y - speed_x + speed_omega;
 	wheel_speed[1] = speed_y + speed_x - speed_omega;
 	wheel_speed[2] = speed_y - speed_x - speed_omega;
 	wheel_speed[3] = speed_y + speed_x + speed_omega;
 	for(int i = 0; i < 4; i++){
-		if (wheel[i] >= 0)
+		if (wheel_speed[i] >= 0)
 		{
 			pwm.setPWM(wheel[i][0], 0, wheel_speed[i]);
 			pwm.setPWM(wheel[i][1], 0, 0);
