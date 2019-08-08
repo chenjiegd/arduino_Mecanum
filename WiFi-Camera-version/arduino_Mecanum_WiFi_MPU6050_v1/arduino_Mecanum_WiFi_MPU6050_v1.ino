@@ -82,6 +82,7 @@ const typedef enum {
 const int key = 8; //按键key
 
 /*小车初始速度控制*/
+const char wheel[4][2] = {{10, 11}, {13, 12}, {15, 14}, {8, 9}};
 static int CarSpeedControl = 150;
 
 /*串口数据设置*/
@@ -164,45 +165,8 @@ void setup()
 	breathing_light(20, 1);
 }
 
-const char wheel[4][2] = {{10, 11}, {13, 12}, {15, 14}, {8, 9}};
-void wheel_run(int a, float speed)
-{
-	speed = speed * 16; //map 255 to 4096
-	if (speed >= 0)
-	{
-		pwm.setPWM(wheel[a - 1][0], 0, speed);
-		pwm.setPWM(wheel[a - 1][1], 0, 0);
-	}
-	else
-	{
-		pwm.setPWM(wheel[a - 1][0], 0, 0);
-		pwm.setPWM(wheel[a - 1][1], 0, -speed);
-	}
-}
-/**
-* Function       mecanum_run
-* @author        wusicaijuan
-* @date          2019.06.25
-* @brief         麦克纳姆移动
-* @param[in]     Speed
-* @param[out]    void
-* @retval        void
-* @par History   无
-*/
-void mecanum_run(float car_alpha, int speed, int car_omega)
-{
-	float speed_x = speed * cos(car_alpha);
-	float speed_y = speed * sin(car_alpha);
-	float speed_omega = speed * sin(car_omega);
-	float wheel1 = speed_y - speed_x + speed_omega;
-	float wheel2 = speed_y + speed_x - speed_omega;
-	float wheel3 = speed_y - speed_x - speed_omega;
-	float wheel4 = speed_y + speed_x + speed_omega;
-	wheel_run(1, wheel1);
-	wheel_run(2, wheel2);
-	wheel_run(3, wheel3);
-	wheel_run(4, wheel4);
-}
+
+
 
 /**
 * Function       run
@@ -732,20 +696,17 @@ void mpu6050_getdata()
 		mpu.dmpGetQuaternion(&q, fifoBuffer);
 		mpu.dmpGetGravity(&gravity, &q);
 		mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-		Serial.print("ypr\t");
-		Serial.print(cal_omega(ypr[0]));
-		Serial.print("\t");
-		// Serial.print(ypr[1] * 180 / M_PI);
+		// Serial.print("ypr\t");
+		// Serial.print(cal_omega(ypr[0]));
 		// Serial.print("\t");
-		// Serial.print(ypr[2] * 180 / M_PI);
 		mpu.dmpGetAccel(&aa, fifoBuffer);
-		Serial.print("\tRaw Accl XYZ\t");
-		Serial.print(aa.x);
-		Serial.print("\t");
-		Serial.print(aa.y);
-		Serial.print("\t");
-		Serial.print(cal_angle(-aa.x, aa.y));
-		Serial.println();
+		// Serial.print("\tRaw Accl XYZ\t");
+		// Serial.print(aa.x);
+		// Serial.print("\t");
+		// Serial.print(aa.y);
+		// Serial.print("\t");
+		// Serial.print(cal_angle(-aa.x, aa.y));
+		// Serial.println();
 
 #endif
 
@@ -765,6 +726,69 @@ float cal_angle(float y, float x)
 float cal_omega(float a)
 {
 	return (a * 180 / M_PI);
+}
+
+/**
+* Function       mecanum_run
+* @author        wusicaijuan
+* @date          2019.06.25
+* @brief         麦克纳姆移动
+* @param[in]     Speed
+* @param[out]    void
+* @retval        void
+* @par History   无
+*/
+// void mecanum_run(float car_alpha, int speed, int car_omega)
+// {
+// 	float speed_x = speed * cos(car_alpha);
+// 	float speed_y = speed * sin(car_alpha);
+// 	float speed_omega = speed * sin(car_omega);
+// 	float wheel1 = speed_y - speed_x + speed_omega;
+// 	float wheel2 = speed_y + speed_x - speed_omega;
+// 	float wheel3 = speed_y - speed_x - speed_omega;
+// 	float wheel4 = speed_y + speed_x + speed_omega;
+// 	wheel_run(1, wheel1);
+// 	wheel_run(2, wheel2);
+// 	wheel_run(3, wheel3);
+// 	wheel_run(4, wheel4);
+// }
+// void wheel_run(int a, float speed)
+// {
+// 	speed = speed * 16; //map 255 to 4096
+// 	if (speed >= 0)
+// 	{
+// 		pwm.setPWM(wheel[a - 1][0], 0, speed);
+// 		pwm.setPWM(wheel[a - 1][1], 0, 0);
+// 	}
+// 	else
+// 	{
+// 		pwm.setPWM(wheel[a - 1][0], 0, 0);
+// 		pwm.setPWM(wheel[a - 1][1], 0, -speed);
+// 	}
+// }
+void mecanum_run(float car_alpha, int speed, int car_omega)
+{
+	speed = speed * 16; //map 255 to 4096
+	float speed_x = speed * cos(car_alpha);
+	float speed_y = speed * sin(car_alpha);
+	float speed_omega = speed * sin(car_omega);
+	float wheel_speed[4];
+	wheel_speed[0] = speed_y - speed_x + speed_omega;
+	wheel_speed[1] = speed_y + speed_x - speed_omega;
+	wheel_speed[2] = speed_y - speed_x - speed_omega;
+	wheel_speed[3] = speed_y + speed_x + speed_omega;
+	for(int i = 0; i < 4; i++){
+		if (wheel[i] >= 0)
+		{
+			pwm.setPWM(wheel[i][0], 0, wheel_speed[i]);
+			pwm.setPWM(wheel[i][1], 0, 0);
+		}
+		else
+		{
+			pwm.setPWM(wheel[i][0], 0, 0);
+			pwm.setPWM(wheel[i][1], 0, -wheel_speed[i]);
+		}
+	}
 }
 
 struct car_omega
