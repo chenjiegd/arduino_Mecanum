@@ -108,8 +108,8 @@ void setup()
 	Wire.begin();
 	Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
 #endif
-	Serial.begin(115200);
-	// Serial.begin(9600);
+	// Serial.begin(115200);
+	Serial.begin(9600);
 	// initialize device
 	mpu.initialize();
 	pinMode(INTERRUPT_PIN, INPUT);
@@ -546,22 +546,22 @@ void loop()
 		brake();
 		break;
 	case enRUN:
-		run(CarSpeedControl);
+		mecanum_run(90 * 180 / M_PI, CarSpeedControl, 0);
 		break;
 	case enLEFT:
-		left(CarSpeedControl);
+		mecanum_run(0 * 180 / M_PI, CarSpeedControl, 0);
 		break;
 	case enRIGHT:
-		right(CarSpeedControl);
+		mecanum_run(a * 180 / M_PI, CarSpeedControl, 0);
 		break;
 	case enBACK:
-		back(CarSpeedControl);
+		mecanum_run(a * 180 / M_PI, CarSpeedControl, 0);
 		break;
 	case enSPINLEFT:
-		spin_left(CarSpeedControl);
+		mecanum_run(a * 180 / M_PI, 0, M_PI/2);
 		break;
 	case enSPINRIGHT:
-		spin_right(CarSpeedControl);
+		mecanum_run(a * 180 / M_PI, 0, -M_PI/2);
 		break;
 	default:
 		brake();
