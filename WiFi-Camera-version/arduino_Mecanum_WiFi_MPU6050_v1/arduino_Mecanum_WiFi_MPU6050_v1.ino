@@ -80,6 +80,24 @@ const typedef enum {
 	enSTOP
 } enCarState;
 
+struct car_omega
+{
+	/* data */
+	float Kp = 0, Ki = 0, Kd = 0;
+	float target_angle = 0;
+	float error = 0, I = 0, D = 0, PID_value = 0;
+	float previous_error = 0, previous_I = 0;
+}a;
+
+struct car_alpha
+{
+	/* data */
+	float Kp = 0, Ki = 0, Kd = 0;
+	float target_angle = 0;
+	float error = 0, I = 0, D = 0, PID_value = 0;
+	float previous_error = 0, previous_I = 0;
+};
+
 const int key = 8; //按键key
 
 /*小车初始速度控制*/
@@ -508,6 +526,7 @@ void serial_data_parse()
 			break;
 		case stop_car:
 			g_CarState = enSTOP;
+			a.target_angle = ypr[0];
 			break;
 		default:
 			g_CarState = enSTOP;
@@ -534,6 +553,8 @@ void serial_data_parse()
 void loop()
 {
 	mpu6050_getdata();
+	a.error = a.target_angle - ypr[0];
+	float an = calculate_pid(a.Kp, a.Ki, a.Kd, a.error, a.I, a.D, &a.previous_error, &a.previous_I);
 	serialEvent();
 	if (NewLineReceived)
 	{
@@ -549,16 +570,16 @@ void loop()
 		brake();
 		break;
 	case enRUN:
-		mecanum_run(M_PI/2, CarSpeedControl, 0, 0);
+		mecanum_run(0, CarSpeedControl, an, CarSpeedControl);
 		break;
 	case enLEFT:
-		mecanum_run(M_PI, CarSpeedControl, 0, 0);
+		mecanum_run(M_PI/2, CarSpeedControl, an, CarSpeedControl);
 		break;
 	case enRIGHT:
-		mecanum_run(0, CarSpeedControl, 0, 0);
+		mecanum_run(-M_PI/2, CarSpeedControl, an, CarSpeedControl);
 		break;
 	case enBACK:
-		mecanum_run(M_PI/2*3, CarSpeedControl, 0, 0);
+		mecanum_run(M_PI, CarSpeedControl, an, CarSpeedControl);
 		break;
 	case enSPINLEFT:
 		mecanum_run(0, 0, M_PI/2, CarSpeedControl);
@@ -694,7 +715,6 @@ void mpu6050_getdata()
 		// (this lets us immediately read more without waiting for an interrupt)
 		fifoCount -= packetSize;
 
-#ifdef OUTPUT_READABLE_YAWPITCHROLL
 		// display Euler angles in degrees
 		mpu.dmpGetQuaternion(&q, fifoBuffer);
 		mpu.dmpGetGravity(&gravity, &q);
@@ -711,7 +731,6 @@ void mpu6050_getdata()
 		// Serial.print(cal_angle(-aa.x, aa.y));
 		// Serial.println();
 
-#endif
 
 		// blink LED to indicate activity
 		blinkState = !blinkState;
@@ -725,10 +744,10 @@ float cal_angle(float y, float x)
 	return atan2(int(y / 200) * 200, int(x / 200) * 200);
 }
 
-//计算偏航角ypr[0]
+//计算偏航角ypr[0]->弧度
 float cal_omega(float a)
 {
-	return (a * 180 / M_PI);
+	return (a * 180 / M_PI);//角度度数
 }
 
 /**
@@ -773,8 +792,8 @@ void mecanum_run(float car_alpha, int speed_L, int car_omega, int speed_A)
 {
 	speed_L = speed_L * 16; //map 255 to 4096
 	speed_A = speed_A * 16; //map 255 to 4096
-	float speed_x = speed_L * cos(car_alpha);
-	float speed_y = speed_L * sin(car_alpha);
+	float speed_x = speed_L * sin(car_alpha);
+	float speed_y = speed_L * cos(car_alpha);
 	float speed_omega = speed_A * sin(car_omega);
 	float wheel_speed[4];
 	wheel_speed[0] = speed_y - speed_x + speed_omega;
@@ -795,31 +814,15 @@ void mecanum_run(float car_alpha, int speed_L, int car_omega, int speed_A)
 	}
 }
 
-struct car_omega
+
+
+float calculate_pid(float Kp, float Ki, float Kd, float error, float *I, float *D, float *previous_error, float *previous_I)
 {
-	/* data */
-	float Kp = 0, Ki = 0, Kd = 0;
-	float error = 0, I = 0, D = 0, PID_value = 0;
-	float previous_error = 0, previous_I = 0;
-};
+	*I = *I + *previous_I;
+	*D = error - *previous_error;
 
-struct car_alpha
-{
-	/* data */
-	float Kp = 0, Ki = 0, Kd = 0;
-	float error = 0, I = 0, D = 0, PID_value = 0;
-	float previous_error = 0, previous_I = 0;
-};
+	return (Kp * error) + (Ki * *I) + (Kd * *D);
 
-float calculate_pid(float Kp, float Ki, float Kd, float error, float I, float D, float previous_error, float previous_I)
-{
-	I = I + previous_I;
-	D = error - previous_error;
-
-	float PID_value = (Kp * error) + (Ki * I) + (Kd * D);
-	return PID_value;
-	// Serial.println(PID_value);
-
-	previous_I = I;
-	previous_error = error;
+	*previous_I = I;
+	*previous_error = error;
 }
