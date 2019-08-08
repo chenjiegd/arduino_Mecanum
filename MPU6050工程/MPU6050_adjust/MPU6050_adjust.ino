@@ -90,7 +90,6 @@ void setup()
 		// Serial.println();
 		mpu.PrintActiveOffsets();
 		// turn on the DMP, now that it's ready
-		// Serial.println(F("Enabling DMP..."));
 		mpu.setDMPEnabled(true);
 
 		attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
@@ -203,14 +202,13 @@ float cal_angle(float y, float x)
 //计算偏航角
 float cal_omega(float a)
 {
-	return(a*180/M_PI);
+	return (a * 180 / M_PI);
 }
 
-
-float Kp = 37, Ki = 4, Kd = 60;
+float Kp = 0, Ki = 0, Kd = 0;
 float error = 0, P = 0, I = 0, D = 0, PID_value = 0;
 float previous_error = 0, previous_I = 0;
-void calculate_pid()
+void calculate_pid(float Kp, float Ki, float Kd, float error, float P, float I, float D, float PID_value, float previous_error, float previous_I)
 {
 	P = error;
 	I = I + previous_I;
