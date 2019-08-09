@@ -10,6 +10,7 @@
 *
 */
 #include <Arduino.h>
+#include <MsTimer2.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <Adafruit_NeoPixel.h> //库文件
 #include "I2Cdev.h"
@@ -80,6 +81,31 @@ const typedef enum {
 	enSTOP
 } enCarState;
 
+/*====================================================================================================
+PID Function
+The PID (比例、积分、微分) function is used in mainly
+control applications. PIDCalc performs one iteration of the PID
+algorithm.
+While the PID function works, main is just a dummy program showing
+a typical usage.
+=====================================================================================================*/
+typedef struct
+{
+	float SetPoint;   // 设定目标Desired value
+	float Proportion; // 比例常数Proportional Const
+	float Integral;   // 积分常数Integral Const
+	float Derivative; // 微分常数Derivative Const
+	float LastError;  // Error[-1]
+	float PrevError;  // Error[-2]
+	float SumError;   // Sums of Errors
+} PID;
+
+/*====================================================================================================/
+PID计算部分
+=====================================================================================================*/
+PID omega_PID = {0, 50.1, 0.001, 0.001, 0, 0, 0};
+PID alpha_PID = {0, 0.1, 0.001, 0.001, 0, 0, 0};
+
 struct car_omega
 {
 	/* data */
@@ -87,7 +113,7 @@ struct car_omega
 	float target_angle = 0;
 	float error = 0, I = 0, D = 0, PID_value = 0;
 	float previous_error = 0, previous_I = 0;
-}a;
+};
 
 struct car_alpha
 {
@@ -103,6 +129,7 @@ const int key = 8; //按键key
 /*小车初始速度控制*/
 const char wheel[4][2] = {{10, 11}, {13, 12}, {15, 14}, {8, 9}};
 static int CarSpeedControl = 150;
+float omega_Work = 0;
 
 /*串口数据设置*/
 int IncomingByte = 0;			 //接收到的 data byte
@@ -177,7 +204,11 @@ void setup()
 		packetSize = mpu.dmpGetFIFOPacketSize();
 	}
 
-	
+	// 中断设置函数，每 5ms 进入一次中断
+	MsTimer2::set(5, flash);
+	//开始计时
+	MsTimer2::start();
+
 	//舵机归位
 	Servo180(75);
 
@@ -186,8 +217,31 @@ void setup()
 	breathing_light(20, 1);
 }
 
+float PIDCalc(float NextPoint)
+{
+	float dError, Error;
+	Error = omega_PID.SetPoint - NextPoint;				// 偏差
+	omega_PID.SumError += Error;						// 积分
+	dError = omega_PID.LastError - omega_PID.PrevError; // 当前微分
+	omega_PID.PrevError = omega_PID.LastError;
+	omega_PID.LastError = Error;
 
+	// if (omega_PID.SumError > 900)
+	// 	omega_PID.SumError = 900;
+	// else if (omega_PID.SumError < -900)
+	// 	omega_PID.SumError = -900;
 
+	return (omega_PID.Proportion * Error			  // 比例项
+			+ omega_PID.Integral * omega_PID.SumError // 积分项
+			+ omega_PID.Derivative * dError			  // 微分项
+	);
+}
+
+//中断处理函数，改变灯的状态
+void flash()
+{
+	omega_Work = PIDCalc(ypr[0]);
+}
 
 /**
 * Function       run
@@ -526,7 +580,7 @@ void serial_data_parse()
 			break;
 		case stop_car:
 			g_CarState = enSTOP;
-			a.target_angle = ypr[0];
+			// omega_PID.SetPoint = ypr[0];
 			break;
 		default:
 			g_CarState = enSTOP;
@@ -553,8 +607,7 @@ void serial_data_parse()
 void loop()
 {
 	mpu6050_getdata();
-	a.error = a.target_angle - ypr[0];
-	float an = calculate_pid(a.Kp, a.Ki, a.Kd, a.error, a.I, a.D, &a.previous_error, &a.previous_I);
+	// float an = PIDCalc(omega_PID, ypr[0]);
 	serialEvent();
 	if (NewLineReceived)
 	{
@@ -570,22 +623,22 @@ void loop()
 		brake();
 		break;
 	case enRUN:
-		mecanum_run(0, CarSpeedControl, an, CarSpeedControl);
+		mecanum_run(0, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enLEFT:
-		mecanum_run(M_PI/2, CarSpeedControl, an, CarSpeedControl);
+		mecanum_run(-M_PI / 2, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enRIGHT:
-		mecanum_run(-M_PI/2, CarSpeedControl, an, CarSpeedControl);
+		mecanum_run(M_PI / 2, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enBACK:
-		mecanum_run(M_PI, CarSpeedControl, an, CarSpeedControl);
+		mecanum_run(M_PI, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enSPINLEFT:
-		mecanum_run(0, 0, M_PI/2, CarSpeedControl);
+		mecanum_run(0, 0, M_PI / 2, CarSpeedControl);
 		break;
 	case enSPINRIGHT:
-		mecanum_run(0, 0, -M_PI/2, CarSpeedControl);
+		mecanum_run(0, 0, -M_PI / 2, CarSpeedControl);
 		break;
 	default:
 		brake();
@@ -731,7 +784,6 @@ void mpu6050_getdata()
 		// Serial.print(cal_angle(-aa.x, aa.y));
 		// Serial.println();
 
-
 		// blink LED to indicate activity
 		blinkState = !blinkState;
 		digitalWrite(LED_PIN, blinkState);
@@ -747,7 +799,7 @@ float cal_angle(float y, float x)
 //计算偏航角ypr[0]->弧度
 float cal_omega(float a)
 {
-	return (a * 180 / M_PI);//角度度数
+	return (a * 180 / M_PI); //角度度数
 }
 
 /**
@@ -800,7 +852,8 @@ void mecanum_run(float car_alpha, int speed_L, int car_omega, int speed_A)
 	wheel_speed[1] = speed_y + speed_x - speed_omega;
 	wheel_speed[2] = speed_y - speed_x - speed_omega;
 	wheel_speed[3] = speed_y + speed_x + speed_omega;
-	for(int i = 0; i < 4; i++){
+	for (int i = 0; i < 4; i++)
+	{
 		if (wheel_speed[i] >= 0)
 		{
 			pwm.setPWM(wheel[i][0], 0, wheel_speed[i]);
@@ -812,17 +865,4 @@ void mecanum_run(float car_alpha, int speed_L, int car_omega, int speed_A)
 			pwm.setPWM(wheel[i][1], 0, -wheel_speed[i]);
 		}
 	}
-}
-
-
-
-float calculate_pid(float Kp, float Ki, float Kd, float error, float *I, float *D, float *previous_error, float *previous_I)
-{
-	*I = *I + *previous_I;
-	*D = error - *previous_error;
-
-	return (Kp * error) + (Ki * *I) + (Kd * *D);
-
-	*previous_I = I;
-	*previous_error = error;
 }
