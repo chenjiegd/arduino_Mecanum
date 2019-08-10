@@ -22,6 +22,7 @@ MPU6050 mpu;
 bool blinkState = true;
 
 float ypr[3]; // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+float new_omega;
 float xyz[3]; // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 // Timers
 unsigned long timer = 0;
@@ -82,7 +83,7 @@ typedef struct
 /*====================================================================================================/
 PID计算部分
 =====================================================================================================*/
-PID omega_PID = {0, 100.1, 0.001, 0.001, 0, 0, 0};
+PID omega_PID = {0, 0.1, 0.001, 0.001, 0, 0, 0};
 PID alpha_PID = {0, 20, 0.001, 0.001, 0, 0, 0};
 
 const int key = 8; //按键key
@@ -374,15 +375,15 @@ void serial_data_parse()
 			g_CarState = enRUN;
 			break;
 		case back_car:
-			alpha_PID = {M_PI, 100.1, 0.001, 0.001, 0, 0, 0};
+			alpha_PID = {M_PI, 100.1, 0.001, 0.001, M_PI, M_PI, 0};
 			g_CarState = enBACK;
 			break;
 		case left_car:
-			alpha_PID = {-M_PI/2, 100.1, 0.001, 0.001, 0, 0, 0};
+			alpha_PID = {-M_PI/2, 100.1, 0.001, 0.001, -M_PI/2, -M_PI/2, 0};
 			g_CarState = enLEFT;
 			break;
 		case right_car:
-			alpha_PID = {M_PI/2, 100.1, 0.001, 0.001, 0, 0, 0};
+			alpha_PID = {M_PI/2, 100.1, 0.001, 0.001, M_PI/2, M_PI/2, 0};
 			g_CarState = enRIGHT;
 			break;
 		case spin_left_car:
@@ -419,7 +420,8 @@ void serial_data_parse()
 void loop()
 {
 	mpu6050_getdata();
-	omega_Work = PIDCalc(ypr[0]);
+	omega_Work = PIDCalc(-new_omega);
+	Serial.println(omega_Work);
 	alpha_Work = PIDCala(-float(cal_angle(-xyz[0], xyz[1])));
 	serialEvent();
 	if (NewLineReceived)
@@ -434,18 +436,19 @@ void loop()
 	{
 	case enSTOP:
 		brake();
+		omega_PID.SetPoint = new_omega;
 		break;
 	case enRUN:
-		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(0, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enLEFT:
-		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(-M_PI/2, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enRIGHT:
-		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(M_PI/2, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enBACK:
-		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(M_PI, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enSPINLEFT:
 		mecanum_run(0, 0, M_PI / 2, CarSpeedControl);
@@ -455,7 +458,8 @@ void loop()
 		break;
 	default:
 		brake();
-		omega_PID.SetPoint = ypr[0];
+		omega_PID = {new_omega, 100, 0, 0, new_omega, new_omega, 0};
+		// omega_PID.SetPoint = new_omega;
 		break;
 	}
 }
@@ -549,6 +553,7 @@ void mpu6050_getdata()
 	// ypr[1] = ypr[1] + norm.YAxis * timeStep;
 	// ypr[2] = ypr[2] + norm.XAxis * timeStep;
 	ypr[0] = ypr[0] + norm.ZAxis * timeStep;
+	new_omega = M_PI*ypr[0]/180;
 	xyz[0] = accel.XAxis;
 	xyz[1] = accel.YAxis;
 
