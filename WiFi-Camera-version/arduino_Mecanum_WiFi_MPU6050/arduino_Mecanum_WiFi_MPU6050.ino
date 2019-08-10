@@ -41,6 +41,7 @@ Quaternion q;		 // [w, x, y, z]         quaternion container
 VectorInt16 aa;		 // [x, y, z]            accel sensor measurements
 VectorFloat gravity; // [x, y, z]            gravity vector
 float ypr[3];		 // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+float pre_yaw = 0;
 
 volatile bool mpuInterrupt = false; // indicates whether MPU interrupt pin has gone high
 void dmpDataReady()
@@ -103,8 +104,26 @@ typedef struct
 /*====================================================================================================/
 PID计算部分
 =====================================================================================================*/
-PID omega_PID = {0, 20.1, 0.001, 0.001, 0, 0, 0};
+PID omega_PID = {0, 100.1, 0.001, 0.001, 0, 0, 0};
 PID alpha_PID = {0, 0.1, 0.001, 0.001, 0, 0, 0};
+
+struct car_omega
+{
+	/* data */
+	float Kp = 0, Ki = 0, Kd = 0;
+	float target_angle = 0;
+	float error = 0, I = 0, D = 0, PID_value = 0;
+	float previous_error = 0, previous_I = 0;
+};
+
+struct car_alpha
+{
+	/* data */
+	float Kp = 0, Ki = 0, Kd = 0;
+	float target_angle = 0;
+	float error = 0, I = 0, D = 0, PID_value = 0;
+	float previous_error = 0, previous_I = 0;
+};
 
 const int key = 8; //按键key
 
@@ -112,7 +131,6 @@ const int key = 8; //按键key
 const char wheel[4][2] = {{10, 11}, {13, 12}, {15, 14}, {8, 9}};
 static int CarSpeedControl = 150;
 float omega_Work = 0;
-float alpha_Work = 0;
 
 /*串口数据设置*/
 int IncomingByte = 0;			 //接收到的 data byte
@@ -147,10 +165,10 @@ void setup()
 	pwm.setPWMFreq(50); // Analog servos run at ~60 Hz updates
 	Clear_All_PWM();
 
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+
 	Wire.begin();
 	Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-#endif
+
 	// Serial.begin(115200);
 	Serial.begin(9600);
 	// initialize device
@@ -186,19 +204,18 @@ void setup()
 		// get expected DMP packet size for later comparison
 		packetSize = mpu.dmpGetFIFOPacketSize();
 	}
-	delay(3000);
-	
+
+	// 中断设置函数，每 5ms 进入一次中断
+	MsTimer2::set(5, flash);
+	//开始计时
+	MsTimer2::start();
+
 	//舵机归位
 	Servo180(75);
 
 	pinMode(key, INPUT); //定义按键输入脚
 
 	breathing_light(20, 1);
-
-	// 中断设置函数，每 5ms 进入一次中断
-	MsTimer2::set(50, flash);
-	//开始计时
-	MsTimer2::start();
 }
 
 float PIDCalc(float NextPoint)
@@ -224,8 +241,7 @@ float PIDCalc(float NextPoint)
 //中断处理函数，改变灯的状态
 void flash()
 {
-	// mpu6050_getdata();
-	// serialEvent();
+    mpu6050_getdata();
 	omega_Work = PIDCalc(ypr[0]);
 }
 
@@ -251,7 +267,6 @@ void brake()
 	pwm.setPWM(14, 0, 0);
 	pwm.setPWM(15, 0, 0);
 }
-
 
 /*
 * Function      Servo180(num, degree)
@@ -331,7 +346,7 @@ void PCB_RGB_OFF()
 */
 void serial_data_parse()
 {
-	// Serial.println(InputString);
+
 	//解析上位机发来的通用协议指令,并执行相应的动作
 	//$4WD,UD180#
 	if (InputString.indexOf("4WD") > 0)
@@ -408,10 +423,10 @@ void serial_data_parse()
 			break;
 		case stop_car:
 			g_CarState = enSTOP;
-			omega_PID.SetPoint = ypr[0];
 			break;
 		default:
 			g_CarState = enSTOP;
+            omega_PID.SetPoint = ypr[0];
 			break;
 		}
 
@@ -434,9 +449,9 @@ void serial_data_parse()
 
 void loop()
 {
-	mpu6050_getdata();
+	// mpu6050_getdata();
 	// float an = PIDCalc(omega_PID, ypr[0]);
-	// serialEvent();
+	serialEvent();
 	if (NewLineReceived)
 	{
 		// 调试查看串口数据
@@ -484,7 +499,6 @@ void loop()
 * @retval        void
 * @par History   无
 */
-
 void serialEvent()
 {
 	while (Serial.available())
@@ -504,7 +518,6 @@ void serialEvent()
 			NewLineReceived = true;
 			StartBit = false;
 		}
-		Serial.println(InputString);
 	}
 }
 
@@ -554,8 +567,18 @@ void breathing_light(int time, int increament)
 void mpu6050_getdata()
 {
 	// if programming failed, don't try to do anything
-	// if (!dmpReady)
-	// 	return;
+	if (!dmpReady)
+		return;
+
+	// wait for MPU interrupt or extra packet(s) available
+	while (!mpuInterrupt && fifoCount < packetSize)
+	{
+		if (mpuInterrupt && fifoCount < packetSize)
+		{
+			// try to get out of the infinite loop
+			fifoCount = mpu.getFIFOCount();
+		}
+	}
 
 	// reset interrupt flag and get INT_STATUS byte
 	mpuInterrupt = false;
@@ -585,12 +608,19 @@ void mpu6050_getdata()
 
 		// track FIFO count here in case there is > 1 packet available
 		// (this lets us immediately read more without waiting for an interrupt)
-		// fifoCount -= packetSize;
+		fifoCount -= packetSize;
 
 		// display Euler angles in degrees
 		mpu.dmpGetQuaternion(&q, fifoBuffer);
 		mpu.dmpGetGravity(&gravity, &q);
 		mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+        if((ypr[0]>pre_yaw+1/60)&&(ypr[0]<pre_yaw-1/60)){
+            return;
+        }else
+        {
+            pre_yaw = ypr[0];
+        }
+        
 		// Serial.print("ypr\t");
 		// Serial.print(cal_omega(ypr[0]));
 		// Serial.print("\t");

@@ -13,40 +13,19 @@
 #include <MsTimer2.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <Adafruit_NeoPixel.h> //库文件
-#include "I2Cdev.h"
-#include "MPU6050_6Axis_MotionApps_V6_12.h"
 #include <math.h>
-
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+#include <MPU6050.h>
 #include "Wire.h"
-#endif
 MPU6050 mpu;
 
-#define OUTPUT_READABLE_YAWPITCHROLL
-
-#define INTERRUPT_PIN 2 // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13		// (Arduino is 13, Teensy is 11, Teensy++ is 6)
-bool blinkState = false;
+bool blinkState = true;
 
-// MPU control/status vars
-bool dmpReady = false;  // set true if DMP init was successful
-uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
-uint8_t devStatus;		// return status after each device operation (0 = success, !0 = error)
-uint16_t packetSize;	// expected DMP packet size (default is 42 bytes)
-uint16_t fifoCount;		// count of all bytes currently in FIFO
-uint8_t fifoBuffer[64]; // FIFO storage buffer
-
-// orientation/motion vars
-Quaternion q;		 // [w, x, y, z]         quaternion container
-VectorInt16 aa;		 // [x, y, z]            accel sensor measurements
-VectorFloat gravity; // [x, y, z]            gravity vector
-float ypr[3];		 // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-
-volatile bool mpuInterrupt = false; // indicates whether MPU interrupt pin has gone high
-void dmpDataReady()
-{
-	mpuInterrupt = true;
-}
+float ypr[3]; // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+float xyz[3]; // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+// Timers
+unsigned long timer = 0;
+float timeStep = 0.01;
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
 #define SERVOMIN 150 // this is the 'minimum' pulse length count (out of 4096)
@@ -103,8 +82,8 @@ typedef struct
 /*====================================================================================================/
 PID计算部分
 =====================================================================================================*/
-PID omega_PID = {0, 20.1, 0.001, 0.001, 0, 0, 0};
-PID alpha_PID = {0, 0.1, 0.001, 0.001, 0, 0, 0};
+PID omega_PID = {0, 100.1, 0.001, 0.001, 0, 0, 0};
+PID alpha_PID = {0, 20, 0.001, 0.001, 0, 0, 0};
 
 const int key = 8; //按键key
 
@@ -147,47 +126,30 @@ void setup()
 	pwm.setPWMFreq(50); // Analog servos run at ~60 Hz updates
 	Clear_All_PWM();
 
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 	Wire.begin();
 	Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-#endif
+
 	// Serial.begin(115200);
 	Serial.begin(9600);
-	// initialize device
-	mpu.initialize();
-	pinMode(INTERRUPT_PIN, INPUT);
 
-	devStatus = mpu.dmpInitialize();
-
-	// supply your own gyro offsets here, scaled for min sensitivity
-	mpu.setXGyroOffset(51);
-	mpu.setYGyroOffset(8);
-	mpu.setZGyroOffset(21);
-	mpu.setXAccelOffset(1150);
-	mpu.setYAccelOffset(-50);
-	mpu.setZAccelOffset(1060);
-	// make sure it worked (returns 0 if so)
-	if (devStatus == 0)
+	// Initialize MPU6050
+	while (!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
 	{
-		// Calibration Time: generate offsets and calibrate our MPU6050
-		mpu.CalibrateAccel(6);
-		mpu.CalibrateGyro(6);
-		// Serial.println();
-		mpu.PrintActiveOffsets();
-		// turn on the DMP, now that it's ready
-		mpu.setDMPEnabled(true);
-
-		attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
-		mpuIntStatus = mpu.getIntStatus();
-
-		// set our DMP Ready flag so the main loop() function knows it's okay to use it
-		dmpReady = true;
-
-		// get expected DMP packet size for later comparison
-		packetSize = mpu.dmpGetFIFOPacketSize();
+		Serial.println("Could not find a valid MPU6050 sensor, check wiring!");
+		delay(500);
 	}
+
+	// Calibrate gyroscope. The calibration must be at rest.
+	// If you don't want calibrate, comment this line.
+	mpu.calibrateGyro();
+
+	// Set threshold sensivty. Default 3.
+	// If you don't want use threshold, comment this line or set 0.
+	mpu.setThreshold(3);
+	digitalWrite(LED_PIN, blinkState);
+
 	delay(3000);
-	
+
 	//舵机归位
 	Servo180(75);
 
@@ -221,12 +183,32 @@ float PIDCalc(float NextPoint)
 	);
 }
 
+float PIDCala(float NextPoint)
+{
+	float dError, Error;
+	Error = alpha_PID.SetPoint - NextPoint;				// 偏差
+	alpha_PID.SumError += Error;						// 积分
+	dError = alpha_PID.LastError - alpha_PID.PrevError; // 当前微分
+	alpha_PID.PrevError = alpha_PID.LastError;
+	alpha_PID.LastError = Error;
+
+	// if (alpha_PID.SumError > 900)
+	// 	alpha_PID.SumError = 900;
+	// else if (alpha_PID.SumError < -900)
+	// 	alpha_PID.SumError = -900;
+
+	return (alpha_PID.Proportion * Error			  // 比例项
+			+ alpha_PID.Integral * alpha_PID.SumError // 积分项
+			+ alpha_PID.Derivative * dError			  // 微分项
+	);
+}
+
 //中断处理函数，改变灯的状态
 void flash()
 {
 	// mpu6050_getdata();
 	// serialEvent();
-	omega_Work = PIDCalc(ypr[0]);
+	// omega_Work = PIDCalc(ypr[0]);
 }
 
 /**
@@ -251,7 +233,6 @@ void brake()
 	pwm.setPWM(14, 0, 0);
 	pwm.setPWM(15, 0, 0);
 }
-
 
 /*
 * Function      Servo180(num, degree)
@@ -389,15 +370,19 @@ void serial_data_parse()
 		switch (InputString[1])
 		{
 		case run_car:
+			alpha_PID = {0, 100.1, 0.001, 0.001, 0, 0, 0};
 			g_CarState = enRUN;
 			break;
 		case back_car:
+			alpha_PID = {M_PI, 100.1, 0.001, 0.001, 0, 0, 0};
 			g_CarState = enBACK;
 			break;
 		case left_car:
+			alpha_PID = {-M_PI/2, 100.1, 0.001, 0.001, 0, 0, 0};
 			g_CarState = enLEFT;
 			break;
 		case right_car:
+			alpha_PID = {M_PI/2, 100.1, 0.001, 0.001, 0, 0, 0};
 			g_CarState = enRIGHT;
 			break;
 		case spin_left_car:
@@ -408,7 +393,6 @@ void serial_data_parse()
 			break;
 		case stop_car:
 			g_CarState = enSTOP;
-			omega_PID.SetPoint = ypr[0];
 			break;
 		default:
 			g_CarState = enSTOP;
@@ -435,8 +419,9 @@ void serial_data_parse()
 void loop()
 {
 	mpu6050_getdata();
-	// float an = PIDCalc(omega_PID, ypr[0]);
-	// serialEvent();
+	omega_Work = PIDCalc(ypr[0]);
+	alpha_Work = PIDCala(-float(cal_angle(-xyz[0], xyz[1])));
+	serialEvent();
 	if (NewLineReceived)
 	{
 		// 调试查看串口数据
@@ -451,16 +436,16 @@ void loop()
 		brake();
 		break;
 	case enRUN:
-		mecanum_run(0, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enLEFT:
-		mecanum_run(-M_PI / 2, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enRIGHT:
-		mecanum_run(M_PI / 2, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enBACK:
-		mecanum_run(M_PI, CarSpeedControl, omega_Work, CarSpeedControl);
+		mecanum_run(alpha_Work, CarSpeedControl, omega_Work, CarSpeedControl);
 		break;
 	case enSPINLEFT:
 		mecanum_run(0, 0, M_PI / 2, CarSpeedControl);
@@ -470,6 +455,7 @@ void loop()
 		break;
 	default:
 		brake();
+		omega_PID.SetPoint = ypr[0];
 		break;
 	}
 }
@@ -504,7 +490,7 @@ void serialEvent()
 			NewLineReceived = true;
 			StartBit = false;
 		}
-		Serial.println(InputString);
+		// Serial.println(InputString);
 	}
 }
 
@@ -553,61 +539,31 @@ void breathing_light(int time, int increament)
 
 void mpu6050_getdata()
 {
-	// if programming failed, don't try to do anything
-	// if (!dmpReady)
-	// 	return;
+	timer = millis();
 
-	// reset interrupt flag and get INT_STATUS byte
-	mpuInterrupt = false;
-	mpuIntStatus = mpu.getIntStatus();
+	// Read normalized values
+	Vector norm = mpu.readNormalizeGyro();
+	Vector accel = mpu.readNormalizeAccel();
 
-	// get current FIFO count
-	fifoCount = mpu.getFIFOCount();
+	// Calculate Pitch, Roll and Yaw
+	// ypr[1] = ypr[1] + norm.YAxis * timeStep;
+	// ypr[2] = ypr[2] + norm.XAxis * timeStep;
+	ypr[0] = ypr[0] + norm.ZAxis * timeStep;
+	xyz[0] = accel.XAxis;
+	xyz[1] = accel.YAxis;
 
-	// check for overflow (this should never happen unless our code is too inefficient)
-	if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024)
-	{
-		// reset so we can continue cleanly
-		mpu.resetFIFO();
-		fifoCount = mpu.getFIFOCount();
-		// Serial.println(F("FIFO overflow!"));
+	// Output raw
+	// Serial.print(" Pitch = ");
+	// Serial.print(ypr[1]);
+	// Serial.print(" Roll = ");
+	// Serial.print(ypr[2]);
+	// Serial.print(" Yaw = ");
+	// Serial.println(ypr[0]);
 
-		// otherwise, check for DMP data ready interrupt (this should happen frequently)
-	}
-	else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
-	{
-		// wait for correct available data length, should be a VERY short wait
-		while (fifoCount < packetSize)
-			fifoCount = mpu.getFIFOCount();
-
-		// read a packet from FIFO
-		mpu.getFIFOBytes(fifoBuffer, packetSize);
-
-		// track FIFO count here in case there is > 1 packet available
-		// (this lets us immediately read more without waiting for an interrupt)
-		// fifoCount -= packetSize;
-
-		// display Euler angles in degrees
-		mpu.dmpGetQuaternion(&q, fifoBuffer);
-		mpu.dmpGetGravity(&gravity, &q);
-		mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-		// Serial.print("ypr\t");
-		// Serial.print(cal_omega(ypr[0]));
-		// Serial.print("\t");
-		mpu.dmpGetAccel(&aa, fifoBuffer);
-		// Serial.print("\tRaw Accl XYZ\t");
-		// Serial.print(aa.x);
-		// Serial.print("\t");
-		// Serial.print(aa.y);
-		// Serial.print("\t");
-		// Serial.print(cal_angle(-aa.x, aa.y));
-		// Serial.println();
-
-		// blink LED to indicate activity
-		blinkState = !blinkState;
-		digitalWrite(LED_PIN, blinkState);
-	}
+	// Wait to full timeStep period
+	delay((timeStep * 1000) - (millis() - timer));
 }
+
 
 //计算移动方向角(-aa.x, aa.y)
 float cal_angle(float y, float x)

@@ -82,10 +82,10 @@ void dmpDataReady()
 
 void setup()
 {
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+
 	Wire.begin();
 	Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-#endif
+
 	Serial.begin(115200);
 	// initialize device
 	mpu.initialize();
@@ -132,50 +132,42 @@ void setup()
 void loop()
 {
 	// if programming failed, don't try to do anything
-	if (!dmpReady)
-		return;
+	// if (!dmpReady)
+	// 	return;
 
-	// wait for MPU interrupt or extra packet(s) available
-	while (!mpuInterrupt && fifoCount < packetSize)
-	{
-		if (mpuInterrupt && fifoCount < packetSize)
-		{
-			// try to get out of the infinite loop
-			fifoCount = mpu.getFIFOCount();
-		}
-	}
+
 
 	// reset interrupt flag and get INT_STATUS byte
-	mpuInterrupt = false;
-	mpuIntStatus = mpu.getIntStatus();
+	// mpuInterrupt = false;
+	// mpuIntStatus = mpu.getIntStatus();
 
-	// get current FIFO count
-	fifoCount = mpu.getFIFOCount();
+	// // get current FIFO count
+	// fifoCount = mpu.getFIFOCount();
 
-	// check for overflow (this should never happen unless our code is too inefficient)
-	if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024)
-	{
-		// reset so we can continue cleanly
-		mpu.resetFIFO();
-		fifoCount = mpu.getFIFOCount();
-		Serial.println(F("FIFO overflow!"));
+	// // check for overflow (this should never happen unless our code is too inefficient)
+	// if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024)
+	// {
+	// 	// reset so we can continue cleanly
+	// 	mpu.resetFIFO();
+	// 	fifoCount = mpu.getFIFOCount();
+	// 	Serial.println(F("FIFO overflow!"));
 
-		// otherwise, check for DMP data ready interrupt (this should happen frequently)
-	}
-	else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
-	{
-		// wait for correct available data length, should be a VERY short wait
-		while (fifoCount < packetSize)
-			fifoCount = mpu.getFIFOCount();
+	// 	// otherwise, check for DMP data ready interrupt (this should happen frequently)
+	// }
+	// else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT))
+	// {
+	// 	// wait for correct available data length, should be a VERY short wait
+	// 	while (fifoCount < packetSize)
+	// 		fifoCount = mpu.getFIFOCount();
 
 		// read a packet from FIFO
 		mpu.getFIFOBytes(fifoBuffer, packetSize);
 
 		// track FIFO count here in case there is > 1 packet available
 		// (this lets us immediately read more without waiting for an interrupt)
-		fifoCount -= packetSize;
+		// fifoCount -= packetSize;
 
-#ifdef OUTPUT_READABLE_YAWPITCHROLL
+
 		// display Euler angles in degrees
 		mpu.dmpGetQuaternion(&q, fifoBuffer);
 		mpu.dmpGetGravity(&gravity, &q);
@@ -211,12 +203,12 @@ void loop()
 		Serial.print(millis());
 		Serial.println();
 		time_1++;
-#endif
 
-		// blink LED to indicate activity
-		blinkState = !blinkState;
-		digitalWrite(LED_PIN, blinkState);
-	}
+
+		// // blink LED to indicate activity
+		// blinkState = !blinkState;
+		// digitalWrite(LED_PIN, blinkState);
+	// }
 }
 
 //计算移动方向角
